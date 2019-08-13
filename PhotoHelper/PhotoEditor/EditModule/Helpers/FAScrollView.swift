@@ -11,27 +11,40 @@ import UIKit
 class FAScrollView: UIScrollView{
   
   // MARK: Class properties
-  
   var imageView:UIImageView = UIImageView()
   var borderView: UIView = UIView()
+  var needCenterAfterZoom = false
   var imageToDisplay:UIImage? = nil{
     didSet{
+      guard let imageToDisplay = imageToDisplay else { return }
       zoomScale = 1.0
       minimumZoomScale = 1.0
       imageView.image = imageToDisplay
-      imageView.frame.size = UIScreen.main.bounds.size
-      imageView.contentMode = .scaleAspectFit
+      imageView.backgroundColor = .white
+      imageView.frame.size = sizeForImageToDisplay()
+      minimumZoomScale = minZoom()
+      imageView.contentMode = .scaleAspectFill
+      imageView.backgroundColor = .red
       imageView.center = center
       contentSize = imageView.frame.size
-      contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+      gridView.frame = maskFrame
+      gridView.isUserInteractionEnabled = false
+      addSubview(gridView)
+      
+      helperMaskView.frame = bounds
+      helperMaskView.backgroundColor = #colorLiteral(red: 0, green: 0, blue: 0, alpha: 0.75)
+      addSubview(helperMaskView)
+      helperMaskView.setMask(with: CGRect(x: maskFrame.origin.x, y: maskFrame.origin.y - 64,
+                                          width: maskFrame.size.width, height: maskFrame.size.height))
+      
     }
   }
-//  var gridView: UIView = Bundle.main.loadNibNamed("FAGridView", owner: nil, options: nil)?.first as! UIView
-  var customMaskView: UIView!
-  let mainRect = UIScreen.main.bounds
-
-  // MARK : Class Functions
   
+  var maskFrame: CGRect = .zero
+  var gridView: UIView = Bundle.main.loadNibNamed("FAGridView", owner: nil, options: nil)?.first as! UIView
+  var helperMaskView: UIView = UIView()
+  
+  // MARK : Class Functions
   override func awakeFromNib() {
     super.awakeFromNib()
     viewConfigurations()
@@ -48,12 +61,17 @@ class FAScrollView: UIScrollView{
   func zoom(isAnimation: Bool) {
     setZoomScale(zoomScaleWithNoWhiteSpaces(), animated: isAnimation)
     updateLayout()
+    if !isAnimation {
+      centerScrollView(self, whithAnimation: false)
+    }
+  }
+  
+  func loadMaskeFrame(_ frame: CGRect) {
+    maskFrame = frame
   }
   
   // MARK: Private Functions
-  
   private func viewConfigurations(){
-    
     clipsToBounds = false;
     showsVerticalScrollIndicator = false
     showsHorizontalScrollIndicator = false
@@ -64,38 +82,9 @@ class FAScrollView: UIScrollView{
     delegate = self
     maximumZoomScale = 5.0
     addSubview(imageView)
-
-//    gridView.frame = frame
-//    gridView.frame = CGRect(x: 0, y: (frame.height - frame.width) / 2, width: frame.width, height: frame.width)
-//    gridView.isUserInteractionEnabled = false
-//    addSubview(gridView)
-    
-    customMaskView = UIView(frame: CGRect(x: 0, y: 0, width: mainRect.width, height: mainRect.height))
-    customMaskView.backgroundColor = #colorLiteral(red: 0, green: 0, blue: 0, alpha: 0.7485695423)
-    addSubview(customMaskView)
-    setMask(with: CGRect(x: 0, y: (mainRect.height - mainRect.width) / 2, width: mainRect.width, height: mainRect.width), in: customMaskView)
-
   }
   
-  
-  private func setMask(with hole: CGRect, in view: UIView){
-    
-    // Create a mutable path and add a rectangle that will be h
-    let mutablePath = CGMutablePath()
-    mutablePath.addRect(view.bounds)
-    mutablePath.addRect(hole)
-    
-    // Create a shape layer and cut out the intersection
-    let mask = CAShapeLayer()
-    mask.path = mutablePath
-    mask.fillRule = CAShapeLayerFillRule.evenOdd
-    
-    // Add the mask to the view
-    view.layer.mask = mask
-    
-  }
-
-  private func sizeForImageToDisplay() -> CGSize{
+  private func sizeForImageToDisplay() -> CGSize {
     var actualWidth:CGFloat = imageToDisplay!.size.width
     var actualHeight:CGFloat = imageToDisplay!.size.height
     var imgRatio:CGFloat = actualWidth/actualHeight
@@ -121,12 +110,27 @@ class FAScrollView: UIScrollView{
     return  CGSize(width: actualWidth, height: actualHeight)
   }
   
+  func minZoom() -> CGFloat {
+    let diffWidth = maskFrame.width / imageView.bounds.width
+    let diffHeight = maskFrame.height / imageView.bounds.height
+    let giff = max(diffWidth, diffHeight)
+    return giff
+  }
+  
+  
   private func zoomScaleWithNoWhiteSpaces() -> CGFloat{
     let imageViewSize:CGSize  = imageView.bounds.size
     let scrollViewSize:CGSize = bounds.size;
     let widthScale:CGFloat  = scrollViewSize.width / imageViewSize.width
     let heightScale:CGFloat = scrollViewSize.height / imageViewSize.height
     return max(widthScale, heightScale)
+  }
+  
+  private func centerScrollView(_ scrollView: UIScrollView, whithAnimation animated: Bool) {
+    let centerOffsetX = (scrollView.contentSize.width - scrollView.frame.size.width) / 2
+    let centerOffsetY = (scrollView.contentSize.height - scrollView.frame.size.height) / 2
+    let centerPoint = CGPoint(x: centerOffsetX, y: centerOffsetY)
+    scrollView.setContentOffset(centerPoint, animated: animated)
   }
   
 }
@@ -144,17 +148,24 @@ extension FAScrollView:UIScrollViewDelegate{
   }
   
   func scrollViewDidScroll(_ scrollView: UIScrollView) {
-//    var frame:CGRect = gridView.frame;
-//    frame.origin.x = scrollView.contentOffset.x
-//    frame.origin.y = scrollView.contentOffset.y + ((frame.height - frame.width) / 2) + 64
-//    gridView.frame = frame
+    var frame:CGRect = gridView.frame;
+    frame.origin.x = maskFrame.origin.x + scrollView.contentOffset.x
+    frame.origin.y = maskFrame.origin.y - 64 + scrollView.contentOffset.y
+    gridView.frame = frame
     
-    var frameMask: CGRect = customMaskView.frame
-    frameMask.origin.x = scrollView.contentOffset.x
-    frameMask.origin.y = scrollView.contentOffset.y
-    customMaskView.frame = frameMask
-
-
+    var tempMaskFrame = helperMaskView.frame
+    tempMaskFrame.origin.x = scrollView.contentOffset.x
+    tempMaskFrame.origin.y = scrollView.contentOffset.y
+    helperMaskView.frame = tempMaskFrame
+    
+    if scrollView.zoomScale < 1 && !needCenterAfterZoom { needCenterAfterZoom = true }
+    
+    let diffWith = round((imageView.bounds.width * scrollView.zoomScale)) - maskFrame.width
+    let diffHeight = round((imageView.bounds.height * scrollView.zoomScale)) - maskFrame.width
+    
+    let resWidth = min(max(0, diffWith), maskFrame.origin.x)
+    let resHeght = min(max(0, diffHeight), maskFrame.origin.y - 64)
+    contentInset = UIEdgeInsets(top: resHeght, left: resWidth, bottom: resHeght, right: resWidth)
   }
   
 }
